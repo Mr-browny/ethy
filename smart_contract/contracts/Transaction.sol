@@ -20,7 +20,7 @@ contract Transactions {
 
     // The memory here basically deals with the memory of that transaction, so it'll fetch the data from there
     // The receiver must be there as well as the amouont
-    function adToBlockChain(address payable receiver, uint amount, string memory message, string memory keyword) public {
+    function addToBlockChain(address payable receiver, uint amount, string memory message, string memory keyword) public {
         transactionCount +=1;
         // Where the msg, is an object that houses the request a specific function in the blockchain
         // The remaining parameters are coming from the above parameters

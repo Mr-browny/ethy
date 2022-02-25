@@ -20,14 +20,15 @@ const { ethereum } = window;
 */
 
 const getEthereumContract = () => {
-    const provider = new ethers.provider.web3Provider(ethereum)
+    const provider = new ethers.providers.Web3Provider(ethereum)
     const signer = provider.getSigner();
     // The 3 ingredients we need to fecth our contracts includes the contractAddress, contractABI and the signer
     const transactionContract = new ethers.Contract(contractAddress, contractABI, signer);
 
-    console.log({
-        provider, signer, transactionContract
-    })
+    // console.log({
+    //     provider, signer, transactionContract
+    // });
+    return transactionContract;
 }
 
 /* 
@@ -37,6 +38,28 @@ const getEthereumContract = () => {
 
 export const TransactionProvider = ({ children }) => {
     const [currentAccount, setCurrentAccount ] = useState('');
+    const [ isLoading, setIsLoading ] = useState(false);
+    const [ transactionCount, setTransactionCount ] = useState(localStorage.getItem('transactionCount'));
+    /*  
+        Firstly, we'd need to get the form data from the client side 
+        To get such data, we'd have the state defined here, with an empty object of the data to be received from the client side...
+        Also, we'd create a handleChange function that'd enable us update/setFormData.
+        In react, when you need to auto get the values from a form, React provides what's called
+        prevState (previous state), then wrap the returned function in parenthesis (), bcus, we don't have one line of code, and we dont wanna use return and {}
+        where we'd first spread the preState, and a square bracket notation of 'name'
+        which was/is derived from the form field, this is the name given to the input fields in the form on the client side...
+        using key-value mode, these values are added to the names given.
+        PS: It is really important for the name from the form fields, to match what you've got in the state...
+    */
+    const [formData, setFormData] = useState({
+        addressTo: '',
+        amount: '',
+        keyword: '',
+        message: ''
+    });
+    const handleChange = (e, name) => {
+        setFormData((preState) => ({...preState, [name]: e.target.value}));
+    }
     /* 
         This function is here to check if the wallet has connected to our application,
         But first, we need to check if ethereum exists, which was destructured from the browser window.
@@ -94,17 +117,30 @@ export const TransactionProvider = ({ children }) => {
       }
    }
     const checkIfWalletIsConnected = async () => {
-        // if(!ethereum) return alert('Please Install MetaMask');
+        try {
+            // if(!ethereum) return alert('Please Install MetaMask');
+            const accounts = await ethereum.request({ method: 'eth_accounts' });
+            if(accounts.length) {
+                // Get all transactions
+                console.log(`%c account: ${accounts}`, "color: red; font-size: 30px;")
+                setCurrentAccount(accounts[0]);
+            } else {
+                console.log('%c No Accounts Found!!!', "color: green; font-size: 40px;")
+            }
+        } catch (error) {
+            console.log(error)
+            throw new Error('Oops!!! No Ehtereum Object')
+        }
 
         checkForMetaMask();
 
-        const accounts = await ethereum.request({ method: 'eth_accounts' });
-        console.log(accounts);
+
     }
 
     const connectWallet = async () => {
         try {
             checkForMetaMask();
+            // The method eth_requestAccounts, is used to request accounts in the browser
             const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
             setCurrentAccount(accounts[0])
         } catch (error) {
@@ -113,12 +149,59 @@ export const TransactionProvider = ({ children }) => {
         }
     }
 
+    const sendTransaction = async () => {
+        try {
+            checkForMetaMask();
+            // Get data from the form on the client side...
+            const { addressTo, amount, keyword, message } = formData;
+            const transactionContract = getEthereumContract();
+            console.log(transactionContract)
+            // The ethers package provides us with utitilty functions that'll allow us convert the decimal number to GWEI
+            const parsedAmount = ethers.utils.parseEther(amount);
+
+            await ethereum.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    from: currentAccount,
+                    to: addressTo,
+                    /* 
+                        Every value used in ethereum is written in hex
+                        Here we'd need to determine just how much eth we wanna spend as the gas fee.
+                        Firstly, visit https://www.rapidtables.com/convert/number/hex-to-decimal.html,
+                        copy and paste the 0x5208, to get the decimal value, then visit
+                        https://eth-converter.com/, paste the decimal value in the Gwei input field,
+                        as Gwei is a sub-unit of Ethereum, just like cent is to dollars.
+                        This in turn, gets you the correct value in eth...
+                    */
+                    gas: '0x5208', // 21000 Gwei
+                    // 
+                    value: parsedAmount._hex // To get the hex value
+                }]
+            });
+            // Remember when you console.logged getEthereumContract(), we had our .addToBlockchain() in it too...
+            const transactionHash = await transactionContract.addToBlockChain(addressTo, parsedAmount, message, keyword);
+            // The transactionHash is a specific transaction ID
+            setIsLoading(true);
+            console.log(`Loading - ${transactionHash}`);
+            await transactionHash.wait();
+            setIsLoading(false);
+            console.log(`Success - ${transactionHash}`);
+
+            const transactionCount = await transactionContract.getTransactionCount();
+            setTransactionCount(transactionCount.toNumber());
+        } catch (error) {
+            console.log(error)
+            alert(error.message)
+            throw new Error('Oops!!! No Ehtereum Object')
+        }
+    }
+
     useEffect(() => {
-        // checkIfWalletIsConnected();
+        checkIfWalletIsConnected();
     }, []);
 
     return (
-        <TransactionContext.Provider value={{connectWallet}}>
+        <TransactionContext.Provider value={{connectWallet, currentAccount, formData, sendTransaction, handleChange}}>
             {/* From the below code, whatever is wrapped inside this Transaction.Provider, is going to be rendered, and will have access to the value attribute */}
             { children }
         </TransactionContext.Provider>
