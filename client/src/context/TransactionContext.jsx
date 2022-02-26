@@ -39,6 +39,7 @@ const getEthereumContract = () => {
 export const TransactionProvider = ({ children }) => {
     const [currentAccount, setCurrentAccount ] = useState('');
     const [ isLoading, setIsLoading ] = useState(false);
+    const [ transactions, setTransactions ] = useState([]);
     const [ transactionCount, setTransactionCount ] = useState(localStorage.getItem('transactionCount'));
     /*  
         Firstly, we'd need to get the form data from the client side 
@@ -59,6 +60,28 @@ export const TransactionProvider = ({ children }) => {
     });
     const handleChange = (e, name) => {
         setFormData((preState) => ({...preState, [name]: e.target.value}));
+    }
+    const getAllTransactions = async () => {
+        try {
+            
+            checkForMetaMask();
+            const transactionContract = getEthereumContract();
+            const availableTransactions = await transactionContract.getAllTransactions();
+            
+            const structuredTransactions = availableTransactions.map((transaction) => ({
+                addressTo: transaction.receiver,
+                addressFrom: transaction.sender,
+                timestamp: new Date(transaction.timestamp.toNumber() * 1000).toLocaleString(),
+                message: transaction.message,
+                keyword: transaction.keyword,
+                // This 10**18 gets us the formal eth amount we saw online...
+                amount: parseInt(transaction.amount._hex) / (10**18)
+            }))
+            setTransactions(structuredTransactions);
+        } catch (error) {
+            console.log(error)
+            throw new Error('Oops!!! No Ehtereum Object')
+        }
     }
     /* 
         This function is here to check if the wallet has connected to our application,
@@ -124,6 +147,7 @@ export const TransactionProvider = ({ children }) => {
                 // Get all transactions
                 console.log(`%c account: ${accounts}`, "color: red; font-size: 30px;")
                 setCurrentAccount(accounts[0]);
+                getAllTransactions();
             } else {
                 console.log('%c No Accounts Found!!!', "color: green; font-size: 40px;")
             }
@@ -135,6 +159,18 @@ export const TransactionProvider = ({ children }) => {
         checkForMetaMask();
 
 
+    }
+
+    const checkIfTransactionsExist = async () => {
+        try {
+            const transactionContract = getEthereumContract();
+            const transactionCount = await transactionContract.getTransactionCount();
+
+            window.localStorage.setItem('transactionCount', transactionCount)
+        } catch (error) {
+            console.log(error)
+            throw new Error('Oops!!! No Ehtereum Object')
+        }
     }
 
     const connectWallet = async () => {
@@ -155,7 +191,6 @@ export const TransactionProvider = ({ children }) => {
             // Get data from the form on the client side...
             const { addressTo, amount, keyword, message } = formData;
             const transactionContract = getEthereumContract();
-            console.log(transactionContract)
             // The ethers package provides us with utitilty functions that'll allow us convert the decimal number to GWEI
             const parsedAmount = ethers.utils.parseEther(amount);
 
@@ -189,6 +224,7 @@ export const TransactionProvider = ({ children }) => {
 
             const transactionCount = await transactionContract.getTransactionCount();
             setTransactionCount(transactionCount.toNumber());
+            window.location.reload() // This reload is needed, so that the new value is updated on the UI;
         } catch (error) {
             console.log(error)
             alert(error.message)
@@ -198,10 +234,11 @@ export const TransactionProvider = ({ children }) => {
 
     useEffect(() => {
         checkIfWalletIsConnected();
+        checkIfTransactionsExist();
     }, []);
 
     return (
-        <TransactionContext.Provider value={{connectWallet, currentAccount, formData, sendTransaction, handleChange}}>
+        <TransactionContext.Provider value={{connectWallet, currentAccount, formData, sendTransaction, handleChange, transactions, isLoading}}>
             {/* From the below code, whatever is wrapped inside this Transaction.Provider, is going to be rendered, and will have access to the value attribute */}
             { children }
         </TransactionContext.Provider>
